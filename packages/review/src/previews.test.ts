@@ -10,6 +10,27 @@ function parse(name: string, author: string, anchor = 'issuecomment-1') {
   return parsePreviews(previewDocFromMarkdown(author, anchor, fixture(name)));
 }
 
+/** The Cloudflare Pages comment as the extension reads it off the page: `textWithTableRows` text plus its links. */
+const renderedCloudflare = {
+  author: 'cloudflare-workers-and-pages[bot]',
+  anchor: 'issuecomment-7',
+  text: [
+    'Deploying alloflow-cdn with Cloudflare Pages',
+    '| Latest commit: | 0370a81 |',
+    '| Status: | ✅ Deploy successful! |',
+    '| Preview URL: | https://f2d0538d.alloflow-cdn.pages.dev |',
+    '| Branch Preview URL: | https://security-phase1-critical-fix.alloflow-cdn.pages.dev |',
+    'View logs',
+  ].join('\n'),
+  links: [
+    { href: 'https://pages.dev', text: '' },
+    { href: 'https://f2d0538d.alloflow-cdn.pages.dev', text: 'https://f2d0538d.alloflow-cdn.pages.dev' },
+    { href: 'https://security-phase1-critical-fix.alloflow-cdn.pages.dev', text: 'https://security-phase1-critical-fix.alloflow-cdn.pages.dev' },
+    { href: 'https://dash.cloudflare.com/?to=/37d398da2811e2beead8fe41dac52058/pages/view/alloflow-cdn/f2d0538d-0c12-45d6-9945-6cbf6e42b724', text: 'View logs' },
+  ],
+  images: [],
+};
+
 describe('parsePreviews', () => {
   it('reads Vercel from its hidden header: every project, status, preview and inspector', () => {
     const found = parse('vercel-ready', 'vercel[bot]');
@@ -60,10 +81,15 @@ describe('parsePreviews', () => {
       author: 'cloudflare-workers-and-pages[bot]',
       anchor: 'issuecomment-1',
       text: 'Deploying site with Cloudflare Pages\nStatus: ⚡️ Building\nBranch Preview URL:\nhttps://feature.site.pages.dev',
-      links: [],
+      links: [{ href: 'https://feature.site.pages.dev', text: 'https://feature.site.pages.dev' }],
       images: [],
     });
     expect(found).toMatchObject({ host: 'cloudflare', project: 'site', status: 'building', url: null, branchUrl: 'https://feature.site.pages.dev' });
+  });
+
+  it('reads both Cloudflare addresses from a rendered table (rows as pipe lines, links separately)', () => {
+    const [found] = parsePreviews(renderedCloudflare);
+    expect(found).toMatchObject({ host: 'cloudflare', project: 'alloflow-cdn', status: 'ready', url: 'https://f2d0538d.alloflow-cdn.pages.dev', branchUrl: 'https://security-phase1-critical-fix.alloflow-cdn.pages.dev' });
   });
 
   it('reads Mintlify, Railway, Render, Amplify, Azure, Read the Docs, Chromatic and a preview Action', () => {
@@ -169,6 +195,12 @@ describe('withPreviewUrl', () => {
     if (!entry) throw new Error(`no preview in ${name}`);
     return entry;
   };
+
+  it('opens the branch address of a Cloudflare preview read from the page', () => {
+    const [found] = parsePreviews(renderedCloudflare);
+    if (!found) throw new Error('no preview');
+    expect(withPreviewUrl(found, 'branch').url).toBe('https://security-phase1-critical-fix.alloflow-cdn.pages.dev');
+  });
 
   it('opens the Branch Preview URL only for Cloudflare in branch mode', () => {
     const pages = first('cloudflare', 'cloudflare-workers-and-pages[bot]');

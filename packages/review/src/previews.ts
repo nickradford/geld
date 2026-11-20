@@ -266,11 +266,12 @@ function parseNetlify(doc: PreviewDoc): readonly Preview[] {
 
 function parseCloudflare(doc: PreviewDoc): readonly Preview[] {
   const pages = /Deploying\s+(\S+)\s+with\s+.*Cloudflare Pages/i.exec(doc.text) ?? /Deploying\s+(\S+)\s+with/i.exec(doc.text);
+  // A rendered table reads back as "| Preview URL: | https://… |", so a cell break may sit between label and URL.
+  const branchUrl = withScheme(/Branch Preview URL:?[\s|]*(https?:\/\/[^\s|]+)/i.exec(doc.text)?.[1] ?? null);
   const previewUrl = (() => {
-    const after = /(?<!Branch )Preview URL:?\s*\n?\s*(https?:\/\/\S+)/i.exec(doc.text)?.[1];
-    return after ?? linkByHref(doc, /^https:\/\/[a-z0-9-]+\.[^.]+\.pages\.dev/i)?.href ?? null;
+    const after = /(?<!Branch )Preview URL:?[\s|]*(https?:\/\/[^\s|]+)/i.exec(doc.text)?.[1];
+    return after ?? doc.links.find((link) => /^https:\/\/[a-z0-9-]+\.[^.]+\.pages\.dev/i.test(link.href) && withScheme(link.href) !== branchUrl)?.href ?? null;
   })();
-  const branchUrl = withScheme(/Branch Preview URL:?\s*\n?\s*(https?:\/\/\S+)/i.exec(doc.text)?.[1] ?? null);
   const statusLine = lines(doc).find((line) => /^Status:?/i.test(line) || /Deploy(ment)? (successful|failed)|Building/i.test(line)) ?? '';
   const logs = linkWhere(doc, /view logs/i) ?? linkByHref(doc, /dash\.cloudflare\.com/i);
   const out: Preview[] = [];
