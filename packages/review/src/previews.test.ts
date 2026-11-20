@@ -48,10 +48,22 @@ describe('parsePreviews', () => {
 
   it('reads Cloudflare Pages and the Workers table', () => {
     const [pages] = parse('cloudflare', 'cloudflare-workers-and-pages[bot]');
-    expect(pages).toMatchObject({ host: 'cloudflare', project: 'alloflow-cdn', status: 'ready', url: 'https://f2d0538d.alloflow-cdn.pages.dev' });
+    expect(pages).toMatchObject({ host: 'cloudflare', project: 'alloflow-cdn', status: 'ready', url: 'https://f2d0538d.alloflow-cdn.pages.dev', branchUrl: 'https://security-phase1-critical-fix.alloflow-cdn.pages.dev' });
     const [workers] = parse('cloudflare-workers', 'cloudflare-workers-and-pages[bot]');
     expect(workers).toMatchObject({ host: 'cloudflare', project: 'alloflow-cdn', status: 'failed' });
     expect(workers?.inspectUrl).toMatch(/dash\.cloudflare\.com/);
+    expect(workers?.branchUrl).toBeUndefined();
+  });
+
+  it('reads a Cloudflare comment still building, with only the Branch Preview URL', () => {
+    const [found] = parsePreviews({
+      author: 'cloudflare-workers-and-pages[bot]',
+      anchor: 'issuecomment-1',
+      text: 'Deploying site with Cloudflare Pages\nStatus: ⚡️ Building\nBranch Preview URL:\nhttps://feature.site.pages.dev',
+      links: [],
+      images: [],
+    });
+    expect(found).toMatchObject({ host: 'cloudflare', project: 'site', status: 'building', url: null, branchUrl: 'https://feature.site.pages.dev' });
   });
 
   it('reads Mintlify, Railway, Render, Amplify, Azure, Read the Docs, Chromatic and a preview Action', () => {

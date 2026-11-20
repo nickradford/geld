@@ -206,6 +206,8 @@ export interface PreviewRecord {
   readonly status: PreviewStatusRecord;
   readonly url: string | null;
   readonly inspectUrl: string | null;
+  /** Cloudflare's Branch Preview URL, an alias that moves to each new build of the branch. */
+  readonly branchUrl?: string;
   readonly anchor: string;
   readonly updatedAt?: string;
   /** Why there is no deployment, when the host said so in words ("X is not a member of the team"). */
@@ -299,6 +301,7 @@ export const previewRecordSchema = z.object({
   status: z.enum(PREVIEW_STATUSES),
   url: z.string().url().nullable(),
   inspectUrl: z.string().url().nullable(),
+  branchUrl: z.string().url().optional(),
   anchor: sourceAnchorSchema,
   updatedAt: isoDate.optional(),
   reason: z.string().min(1).max(200).optional(),
@@ -400,7 +403,8 @@ function metaFrom(value: z.infer<typeof geldPrMetaSchema>): GeldPrMeta {
         ...summarised,
         previews: value.previews.map((entry) => {
           const record: PreviewRecord = { host: entry.host, project: entry.project, status: entry.status, url: entry.url, inspectUrl: entry.inspectUrl, anchor: entry.anchor };
-          const dated = entry.updatedAt === undefined ? record : { ...record, updatedAt: entry.updatedAt };
+          const branched = entry.branchUrl === undefined ? record : { ...record, branchUrl: entry.branchUrl };
+          const dated = entry.updatedAt === undefined ? branched : { ...branched, updatedAt: entry.updatedAt };
           return entry.reason === undefined ? dated : { ...dated, reason: entry.reason };
         }),
       };

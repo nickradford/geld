@@ -266,14 +266,16 @@ function parseNetlify(doc: PreviewDoc): readonly Preview[] {
 function parseCloudflare(doc: PreviewDoc): readonly Preview[] {
   const pages = /Deploying\s+(\S+)\s+with\s+.*Cloudflare Pages/i.exec(doc.text) ?? /Deploying\s+(\S+)\s+with/i.exec(doc.text);
   const previewUrl = (() => {
-    const after = /Preview URL:?\s*\n?\s*(https?:\/\/\S+)/i.exec(doc.text)?.[1];
+    const after = /(?<!Branch )Preview URL:?\s*\n?\s*(https?:\/\/\S+)/i.exec(doc.text)?.[1];
     return after ?? linkByHref(doc, /^https:\/\/[a-z0-9-]+\.[^.]+\.pages\.dev/i)?.href ?? null;
   })();
+  const branchUrl = withScheme(/Branch Preview URL:?\s*\n?\s*(https?:\/\/\S+)/i.exec(doc.text)?.[1] ?? null);
   const statusLine = lines(doc).find((line) => /^Status:?/i.test(line) || /Deploy(ment)? (successful|failed)|Building/i.test(line)) ?? '';
   const logs = linkWhere(doc, /view logs/i) ?? linkByHref(doc, /dash\.cloudflare\.com/i);
   const out: Preview[] = [];
   if (pages?.[1] !== undefined || previewUrl !== null) {
-    out.push(preview('cloudflare', doc, pages?.[1] ?? '', statusLine === '' ? (previewUrl === null ? 'unknown' : 'ready') : statusFromText(statusLine), previewUrl, logs?.href ?? null));
+    const found = preview('cloudflare', doc, pages?.[1] ?? '', statusLine === '' ? (previewUrl === null ? 'unknown' : 'ready') : statusFromText(statusLine), previewUrl, logs?.href ?? null);
+    out.push(branchUrl === null || branchUrl === found.url ? found : { ...found, branchUrl });
   }
   // Workers table: "| ❌ Deployment failed <br>[View logs](…) | alloflow-cdn | 0370a813 | … |"
   if (out.length === 0) {
