@@ -20,7 +20,7 @@ export type ListSettingKey = {
 }[keyof GeldSettings];
 
 /** Settings that pick one of a fixed set of string values. */
-export type ChoiceSettingKey = 'repoConfigs' | 'compactTimeline' | 'reviewGrouping' | 'suggestedFixes' | 'codingAgent';
+export type ChoiceSettingKey = 'repoConfigs' | 'compactTimeline' | 'reviewGrouping' | 'cloudflarePreviewUrl' | 'suggestedFixes' | 'codingAgent';
 
 /** Freeform string settings (URLs, model ids). Distinct from {@link ChoiceSettingKey}. */
 export type TextSettingKey = 'aiBaseUrl' | 'aiModel' | 'aiDecisionModel';
@@ -578,6 +578,18 @@ export const SETTINGS_SCHEMA: readonly SettingsSection[] = [
         options: [
           { value: 'type', label: 'Type', description: 'Bots, CI, reviews, rounds and activity, each in its own section.' },
           { value: 'batch', label: 'Push', description: 'One row per push with everything that landed between it and the last.' },
+        ],
+      },
+      {
+        kind: 'choice',
+        key: 'cloudflarePreviewUrl',
+        label: 'Cloudflare previews open',
+        description:
+          'A Cloudflare Pages comment gives two addresses. The Preview URL keeps the build of that commit. The Branch Preview URL moves to each new build, so one address serves the whole pull request.',
+        popup: false,
+        options: [
+          { value: 'commit', label: 'This commit', description: 'The build of the commit the comment is about. Older previews show the pull request as it was.' },
+          { value: 'branch', label: 'Branch', description: 'The newest build of the branch. Sign-ins and allowlists keep working across pushes.' },
         ],
       },
       {

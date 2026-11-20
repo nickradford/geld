@@ -2,7 +2,7 @@ import type { CategoryId } from './categories';
 import { CATEGORY_IDS, isCategoryId } from './categories';
 import { ISSUE_TRACKERS } from './trackers';
 import type { GeldSettings } from './settings';
-import { COMPACT_TIMELINE_MODES, DIGEST_VIEWS, digestViewOf, isAutoViewed, isCategoryEnabled, REPO_CONFIG_MODES, REVIEW_GROUPINGS, SUGGESTED_FIX_MODES, CODING_AGENT_IDS } from './settings';
+import { COMPACT_TIMELINE_MODES, DIGEST_VIEWS, digestViewOf, isAutoViewed, isCategoryEnabled, REPO_CONFIG_MODES, REVIEW_GROUPINGS, SUGGESTED_FIX_MODES, CODING_AGENT_IDS, CLOUDFLARE_PREVIEW_URLS } from './settings';
 
 /**
  * What the weekly usage ping says about settings, and the feature counts the
@@ -47,6 +47,7 @@ export type UsageToggle = (typeof USAGE_TOGGLES)[number];
 export const USAGE_CHOICES = {
   compactTimeline: COMPACT_TIMELINE_MODES,
   reviewGrouping: REVIEW_GROUPINGS,
+  cloudflarePreviewUrl: CLOUDFLARE_PREVIEW_URLS,
   repoConfigs: REPO_CONFIG_MODES,
   suggestedFixes: SUGGESTED_FIX_MODES,
   codingAgent: CODING_AGENT_IDS,
@@ -174,6 +175,7 @@ export function usageSettingsOf(settings: GeldSettings): UsageSettings {
     choices: {
       compactTimeline: settings.compactTimeline,
       reviewGrouping: settings.reviewGrouping,
+      cloudflarePreviewUrl: settings.cloudflarePreviewUrl,
       repoConfigs: settings.repoConfigs,
       suggestedFixes: settings.suggestedFixes,
       codingAgent: settings.codingAgent,

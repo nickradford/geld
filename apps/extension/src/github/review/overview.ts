@@ -11,7 +11,7 @@ import { createElement, OWN_UI_ATTRIBUTE } from '../dom';
 import type { GeldSettings } from '@geld/core';
 import { compileAuthorRules, digestViewOf, repoFromPathname } from '@geld/core';
 import type { BotComment, BotVerdictRecord, CommentLane, GeldPrMeta, RawCheckRun, ReviewItem, ReviewerState } from '@geld/review';
-import { botAppAvatar, botById, botTitle, isCursorAgentId, checkReporterAvatar, clusterComments, commandReply, firstSentence, isOpenStatus, isReviewShaped, isStatusLineComment, isTriggerComment, latestPreviews, latestReports, mergeCheckRuns, parseBotBody, parsePreviews, refusalReason, REPORT_GRACE_MS, reportsFrom, reportsFromChecks, resolveBotId, verdictsFrom } from '@geld/review';
+import { botAppAvatar, botById, botTitle, isCursorAgentId, checkReporterAvatar, clusterComments, commandReply, firstSentence, isOpenStatus, isReviewShaped, isStatusLineComment, isTriggerComment, latestPreviews, latestReports, mergeCheckRuns, parseBotBody, parsePreviews, refusalReason, REPORT_GRACE_MS, reportsFrom, reportsFromChecks, resolveBotId, verdictsFrom, withPreviewUrl } from '@geld/review';
 import type { Preview } from '@geld/review';
 import { detectHeadSha } from '../head-sha';
 import { describePage, pullRequestStateWords } from '../page';
@@ -3797,7 +3797,8 @@ function applyReviewOverviewPass(settings: GeldSettings, paths?: readonly string
   // An earlier push's preview opens its own build, which GitHub's deployment events name; the comment links the branch.
   const splitPreviews = latestPreviews(allPreviews);
   const pinned = new Map(splitPreviews.archived.map((entry) => [entry, pinnedToBuild(entry, deploymentsOfPreview(entry, splitPreviews.latest, allDeployments))] as const));
-  const previews = { latest: splitPreviews.latest, archived: splitPreviews.archived.map((entry) => pinned.get(entry) ?? entry) };
+  // Cloudflare's branch alias always serves the newest build, so only the latest preview takes it; earlier pushes keep theirs.
+  const previews = { latest: splitPreviews.latest.map((entry) => withPreviewUrl(entry, settings.cloudflarePreviewUrl)), archived: splitPreviews.archived.map((entry) => pinned.get(entry) ?? entry) };
   // The rounds show the same earlier previews, so they open the same builds.
   const roundPreviews = allPreviews.map((entry) => pinned.get(entry) ?? entry);
   const deployments = deploymentEntries(allDeployments, previews.latest);

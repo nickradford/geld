@@ -57,6 +57,16 @@ describe('parseGeldPrMeta', () => {
     expect('truncated' in result.value).toBe(false);
     expect('path' in (result.value.items[0] ?? {})).toBe(false);
   });
+
+  it("carries a preview's branch URL only when it has one", () => {
+    const commit = { host: 'cloudflare', project: 'site', status: 'ready' as const, url: 'https://f2d0538d.site.pages.dev', inspectUrl: null, anchor: 'issuecomment-1' };
+    const result = parseGeldPrMeta(meta({ previews: [{ ...commit, branchUrl: 'https://feature.site.pages.dev' }, commit] }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.previews?.[0]?.branchUrl).toBe('https://feature.site.pages.dev');
+    expect('branchUrl' in (result.value.previews?.[1] ?? {})).toBe(false);
+    expect(parseGeldPrMeta(meta({ previews: [{ ...commit, branchUrl: 'feature' }] })).ok).toBe(false);
+  });
 });
 
 describe('item ids and truncation', () => {

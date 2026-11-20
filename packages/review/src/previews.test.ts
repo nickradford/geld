@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { latestPreviews, parsePreviews, previewDocFromMarkdown, vercelHeader } from './previews';
+import { latestPreviews, parsePreviews, previewDocFromMarkdown, vercelHeader, withPreviewUrl } from './previews';
 
 function fixture(name: string): string {
   return readFileSync(new URL(`./__fixtures__/previews/${name}.md`, import.meta.url), 'utf8');
@@ -9,6 +9,27 @@ function fixture(name: string): string {
 function parse(name: string, author: string, anchor = 'issuecomment-1') {
   return parsePreviews(previewDocFromMarkdown(author, anchor, fixture(name)));
 }
+
+/** The Cloudflare Pages comment as the extension reads it off the page: `textWithTableRows` text plus its links. */
+const renderedCloudflare = {
+  author: 'cloudflare-workers-and-pages[bot]',
+  anchor: 'issuecomment-7',
+  text: [
+    'Deploying alloflow-cdn with Cloudflare Pages',
+    '| Latest commit: | 0370a81 |',
+    '| Status: | ✅ Deploy successful! |',
+    '| Preview URL: | https://f2d0538d.alloflow-cdn.pages.dev |',
+    '| Branch Preview URL: | https://security-phase1-critical-fix.alloflow-cdn.pages.dev |',
+    'View logs',
+  ].join('\n'),
+  links: [
+    { href: 'https://pages.dev', text: '' },
+    { href: 'https://f2d0538d.alloflow-cdn.pages.dev', text: 'https://f2d0538d.alloflow-cdn.pages.dev' },
+    { href: 'https://security-phase1-critical-fix.alloflow-cdn.pages.dev', text: 'https://security-phase1-critical-fix.alloflow-cdn.pages.dev' },
+    { href: 'https://dash.cloudflare.com/?to=/37d398da2811e2beead8fe41dac52058/pages/view/alloflow-cdn/f2d0538d-0c12-45d6-9945-6cbf6e42b724', text: 'View logs' },
+  ],
+  images: [],
+};
 
 describe('parsePreviews', () => {
   it('reads Vercel from its hidden header: every project, status, preview and inspector', () => {
@@ -48,10 +69,27 @@ describe('parsePreviews', () => {
 
   it('reads Cloudflare Pages and the Workers table', () => {
     const [pages] = parse('cloudflare', 'cloudflare-workers-and-pages[bot]');
-    expect(pages).toMatchObject({ host: 'cloudflare', project: 'alloflow-cdn', status: 'ready', url: 'https://f2d0538d.alloflow-cdn.pages.dev' });
+    expect(pages).toMatchObject({ host: 'cloudflare', project: 'alloflow-cdn', status: 'ready', url: 'https://f2d0538d.alloflow-cdn.pages.dev', branchUrl: 'https://security-phase1-critical-fix.alloflow-cdn.pages.dev' });
     const [workers] = parse('cloudflare-workers', 'cloudflare-workers-and-pages[bot]');
     expect(workers).toMatchObject({ host: 'cloudflare', project: 'alloflow-cdn', status: 'failed' });
     expect(workers?.inspectUrl).toMatch(/dash\.cloudflare\.com/);
+    expect(workers?.branchUrl).toBeUndefined();
+  });
+
+  it('reads a Cloudflare comment still building, with only the Branch Preview URL', () => {
+    const [found] = parsePreviews({
+      author: 'cloudflare-workers-and-pages[bot]',
+      anchor: 'issuecomment-1',
+      text: 'Deploying site with Cloudflare Pages\nStatus: ⚡️ Building\nBranch Preview URL:\nhttps://feature.site.pages.dev',
+      links: [{ href: 'https://feature.site.pages.dev', text: 'https://feature.site.pages.dev' }],
+      images: [],
+    });
+    expect(found).toMatchObject({ host: 'cloudflare', project: 'site', status: 'building', url: null, branchUrl: 'https://feature.site.pages.dev' });
+  });
+
+  it('reads both Cloudflare addresses from a rendered table (rows as pipe lines, links separately)', () => {
+    const [found] = parsePreviews(renderedCloudflare);
+    expect(found).toMatchObject({ host: 'cloudflare', project: 'alloflow-cdn', status: 'ready', url: 'https://f2d0538d.alloflow-cdn.pages.dev', branchUrl: 'https://security-phase1-critical-fix.alloflow-cdn.pages.dev' });
   });
 
   it('reads Mintlify, Railway, Render, Amplify, Azure, Read the Docs, Chromatic and a preview Action', () => {
@@ -148,6 +186,33 @@ describe('latestPreviews', () => {
     const { latest, archived } = latestPreviews([...older, ...newer, ...other]);
     expect(latest.map((entry) => entry.anchor)).toEqual(['issuecomment-2', 'issuecomment-3']);
     expect(archived.map((entry) => entry.anchor)).toEqual(['issuecomment-1']);
+  });
+});
+
+describe('withPreviewUrl', () => {
+  const first = (name: string, author: string) => {
+    const [entry] = parse(name, author);
+    if (!entry) throw new Error(`no preview in ${name}`);
+    return entry;
+  };
+
+  it('opens the branch address of a Cloudflare preview read from the page', () => {
+    const [found] = parsePreviews(renderedCloudflare);
+    if (!found) throw new Error('no preview');
+    expect(withPreviewUrl(found, 'branch').url).toBe('https://security-phase1-critical-fix.alloflow-cdn.pages.dev');
+  });
+
+  it('opens the Branch Preview URL only for Cloudflare in branch mode', () => {
+    const pages = first('cloudflare', 'cloudflare-workers-and-pages[bot]');
+    const netlify = first('netlify', 'netlify[bot]');
+    expect(withPreviewUrl(pages, 'branch').url).toBe('https://security-phase1-critical-fix.alloflow-cdn.pages.dev');
+    expect(withPreviewUrl(pages, 'commit')).toBe(pages);
+    expect(withPreviewUrl(netlify, 'branch')).toBe(netlify);
+  });
+
+  it('keeps the commit URL when the comment gave no branch URL', () => {
+    const workers = first('cloudflare-workers', 'cloudflare-workers-and-pages[bot]');
+    expect(withPreviewUrl(workers, 'branch')).toBe(workers);
   });
 });
 

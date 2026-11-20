@@ -32,6 +32,7 @@
  * - Actions in general (surge-preview, MDN, Cloudflare docs): "Preview URL:" / "Preview" + a link.
  */
 
+import type { CloudflarePreviewUrl } from '@geld/core';
 import type { PreviewRecord, PreviewStatusRecord } from './model';
 
 export type PreviewStatus = PreviewStatusRecord;
@@ -265,15 +266,18 @@ function parseNetlify(doc: PreviewDoc): readonly Preview[] {
 
 function parseCloudflare(doc: PreviewDoc): readonly Preview[] {
   const pages = /Deploying\s+(\S+)\s+with\s+.*Cloudflare Pages/i.exec(doc.text) ?? /Deploying\s+(\S+)\s+with/i.exec(doc.text);
+  // A rendered table reads back as "| Preview URL: | https://… |", so a cell break may sit between label and URL.
+  const branchUrl = withScheme(/Branch Preview URL:?[\s|]*(https?:\/\/[^\s|]+)/i.exec(doc.text)?.[1] ?? null);
   const previewUrl = (() => {
-    const after = /Preview URL:?\s*\n?\s*(https?:\/\/\S+)/i.exec(doc.text)?.[1];
-    return after ?? linkByHref(doc, /^https:\/\/[a-z0-9-]+\.[^.]+\.pages\.dev/i)?.href ?? null;
+    const after = /(?<!Branch )Preview URL:?[\s|]*(https?:\/\/[^\s|]+)/i.exec(doc.text)?.[1];
+    return after ?? doc.links.find((link) => /^https:\/\/[a-z0-9-]+\.[^.]+\.pages\.dev/i.test(link.href) && withScheme(link.href) !== branchUrl)?.href ?? null;
   })();
   const statusLine = lines(doc).find((line) => /^Status:?/i.test(line) || /Deploy(ment)? (successful|failed)|Building/i.test(line)) ?? '';
   const logs = linkWhere(doc, /view logs/i) ?? linkByHref(doc, /dash\.cloudflare\.com/i);
   const out: Preview[] = [];
   if (pages?.[1] !== undefined || previewUrl !== null) {
-    out.push(preview('cloudflare', doc, pages?.[1] ?? '', statusLine === '' ? (previewUrl === null ? 'unknown' : 'ready') : statusFromText(statusLine), previewUrl, logs?.href ?? null));
+    const found = preview('cloudflare', doc, pages?.[1] ?? '', statusLine === '' ? (previewUrl === null ? 'unknown' : 'ready') : statusFromText(statusLine), previewUrl, logs?.href ?? null);
+    out.push(branchUrl === null || branchUrl === found.url ? found : { ...found, branchUrl });
   }
   // Workers table: "| ❌ Deployment failed <br>[View logs](…) | alloflow-cdn | 0370a813 | … |"
   if (out.length === 0) {
@@ -438,6 +442,11 @@ export function parsePreviews(doc: PreviewDoc): readonly Preview[] {
 /** Identity of the deployed thing across comments: the same host's same project supersedes itself. */
 export function previewKey(entry: Preview): string {
   return `${entry.host}:${entry.project.toLowerCase()}`;
+}
+
+/** The preview opening Cloudflare's Branch Preview URL when the reader chose the branch and the comment gave one. */
+export function withPreviewUrl(entry: Preview, cloudflare: CloudflarePreviewUrl): Preview {
+  return cloudflare === 'branch' && entry.host === 'cloudflare' && entry.branchUrl !== undefined ? { ...entry, url: entry.branchUrl } : entry;
 }
 
 /**

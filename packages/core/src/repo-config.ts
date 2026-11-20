@@ -81,6 +81,7 @@ const PERSONAL_KEYS = [
   'digestViewChosenAt',
   'consentDecidedAt',
   'reviewGrouping',
+  'cloudflarePreviewUrl',
   'collapseDescription',
   'aiBaseUrl',
   'aiModel',

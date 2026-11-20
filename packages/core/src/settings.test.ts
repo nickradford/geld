@@ -55,6 +55,12 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ attachmentLightbox: false }).attachmentLightbox).toBe(false);
   });
 
+  it('opens Cloudflare previews at the commit unless branch is chosen', () => {
+    expect(normalizeSettings({}).cloudflarePreviewUrl).toBe('commit');
+    expect(normalizeSettings({ cloudflarePreviewUrl: 'latest' }).cloudflarePreviewUrl).toBe('commit');
+    expect(normalizeSettings({ cloudflarePreviewUrl: 'branch' }).cloudflarePreviewUrl).toBe('branch');
+  });
+
   it('returns defaults for garbage', () => {
     expect(normalizeSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(normalizeSettings('nope')).toEqual(DEFAULT_SETTINGS);
