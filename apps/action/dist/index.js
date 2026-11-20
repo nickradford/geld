@@ -2128,7 +2128,16 @@ function parseUnifiedDiff(diffText) {
   const files = [];
   let current = null;
   let inHunk = false;
+  const closeHunk = () => {
+    if (current === null || current.hunkOld.length === 0 && current.hunkNew.length === 0) return;
+    const kept = commonLines(current.hunkOld, current.hunkNew);
+    current.wsAdditions += current.hunkNew.length - kept;
+    current.wsDeletions += current.hunkOld.length - kept;
+    current.hunkOld = [];
+    current.hunkNew = [];
+  };
   const flush = () => {
+    closeHunk();
     if (current !== null) {
       const kinds = [];
       if (current.renamed && current.hunks === 0) kinds.push("renames");
@@ -2148,6 +2157,9 @@ function parseUnifiedDiff(diffText) {
         const kept = new Set(named(current.newSide));
         const removedImports = [...new Set(named(current.oldSide))].filter((specifier) => !kept.has(specifier));
         if (removedImports.length > 0) stats = { ...stats, removedImports };
+      }
+      if (!current.binary && (current.wsAdditions !== current.additions || current.wsDeletions !== current.deletions)) {
+        stats = { ...stats, ignoringWhitespace: { additions: current.wsAdditions, deletions: current.wsDeletions } };
       }
       files.push(stats);
     }
@@ -2177,13 +2189,18 @@ function parseUnifiedDiff(diffText) {
         commentAdded: [],
         commentRemoved: [],
         oldSide: canReadImports(path) ? [] : null,
-        newSide: canReadImports(path) ? [] : null
+        newSide: canReadImports(path) ? [] : null,
+        hunkOld: [],
+        hunkNew: [],
+        wsAdditions: 0,
+        wsDeletions: 0
       };
       inHunk = false;
       continue;
     }
     if (current === null) continue;
     if (line.startsWith("@@")) {
+      closeHunk();
       inHunk = true;
       current.hunks += 1;
       current.oldSide?.push([]);
@@ -2211,6 +2228,7 @@ function parseUnifiedDiff(diffText) {
       current.additions += 1;
       const text = line.slice(1);
       current.added.push(text.replace(WHITESPACE, ""));
+      current.hunkNew.push(text.replace(WHITESPACE, ""));
       current.newSide?.at(-1)?.push(text);
       if (current.syntax !== null && isCommentOnlyLine(text, current.syntax, current.newState)) current.commentAdded.push(current.newLine);
       current.newLine += 1;
@@ -2218,11 +2236,15 @@ function parseUnifiedDiff(diffText) {
       current.deletions += 1;
       const text = line.slice(1);
       current.removed.push(text.replace(WHITESPACE, ""));
+      current.hunkOld.push(text.replace(WHITESPACE, ""));
       current.oldSide?.at(-1)?.push(text);
       if (current.syntax !== null && isCommentOnlyLine(text, current.syntax, current.oldState)) current.commentRemoved.push(current.oldLine);
       current.oldLine += 1;
     } else if (line.startsWith(" ") || line === "") {
       const text = line.slice(1);
+      const stripped = text.replace(WHITESPACE, "");
+      current.hunkOld.push(stripped);
+      current.hunkNew.push(stripped);
       current.oldSide?.at(-1)?.push(text);
       current.newSide?.at(-1)?.push(text);
       if (current.syntax !== null) {
@@ -2236,15 +2258,47 @@ function parseUnifiedDiff(diffText) {
   flush();
   return files;
 }
-var MAX_COMMENT_LINES, HUNK_HEADER, WHITESPACE;
+function commonLines(old, next) {
+  let start = 0;
+  while (start < old.length && start < next.length && old[start] === next[start]) start += 1;
+  let end = 0;
+  while (end < old.length - start && end < next.length - start && old[old.length - 1 - end] === next[next.length - 1 - end]) end += 1;
+  const a = old.slice(start, old.length - end);
+  const b = next.slice(start, next.length - end);
+  if (a.length === 0 || b.length === 0) return start + end;
+  if (a.length * b.length > MAX_LCS_CELLS) {
+    const left = /* @__PURE__ */ new Map();
+    for (const line of a) left.set(line, (left.get(line) ?? 0) + 1);
+    let matched = 0;
+    for (const line of b) {
+      const count = left.get(line) ?? 0;
+      if (count === 0) continue;
+      left.set(line, count - 1);
+      matched += 1;
+    }
+    return start + end + matched;
+  }
+  let previous = new Uint32Array(b.length + 1);
+  let row = new Uint32Array(b.length + 1);
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      row[j] = a[i - 1] === b[j - 1] ? (previous[j - 1] ?? 0) + 1 : Math.max(previous[j] ?? 0, row[j - 1] ?? 0);
+    }
+    [previous, row] = [row, previous];
+  }
+  return start + end + (previous[b.length] ?? 0);
+}
+var DIFF_PARSE_VERSION, MAX_COMMENT_LINES, HUNK_HEADER, WHITESPACE, MAX_LCS_CELLS;
 var init_diff_parse = __esm({
   "../../packages/core/src/diff-parse.ts"() {
     "use strict";
     init_comment_lines();
     init_file_flow();
+    DIFF_PARSE_VERSION = 2;
     MAX_COMMENT_LINES = 2e3;
     HUNK_HEADER = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
     WHITESPACE = /\s+/g;
+    MAX_LCS_CELLS = 4e6;
   }
 });
 
@@ -2538,6 +2592,9 @@ function isSuggestedFixMode(value) {
 function isReviewGrouping(value) {
   return typeof value === "string" && REVIEW_GROUPINGS.some((mode) => mode === value);
 }
+function isCloudflarePreviewUrl(value) {
+  return typeof value === "string" && CLOUDFLARE_PREVIEW_URLS.some((mode) => mode === value);
+}
 function isRepoConfigMode(value) {
   return typeof value === "string" && REPO_CONFIG_MODES.some((mode) => mode === value);
 }
@@ -2730,6 +2787,7 @@ function normalizeSettings(value) {
     digestViewChosenAt: typeof record4.digestViewChosenAt === "string" ? record4.digestViewChosenAt : DEFAULT_SETTINGS.digestViewChosenAt,
     consentDecidedAt: typeof record4.consentDecidedAt === "string" ? record4.consentDecidedAt : DEFAULT_SETTINGS.consentDecidedAt,
     reviewGrouping: isReviewGrouping(record4.reviewGrouping) ? record4.reviewGrouping : DEFAULT_SETTINGS.reviewGrouping,
+    cloudflarePreviewUrl: isCloudflarePreviewUrl(record4.cloudflarePreviewUrl) ? record4.cloudflarePreviewUrl : DEFAULT_SETTINGS.cloudflarePreviewUrl,
     collapseDescription: bool(record4, "collapseDescription", DEFAULT_SETTINGS.collapseDescription),
     attachmentLightbox: bool(record4, "attachmentLightbox", DEFAULT_SETTINGS.attachmentLightbox),
     relatedLinks: bool(record4, "relatedLinks", DEFAULT_SETTINGS.relatedLinks),
@@ -2801,7 +2859,7 @@ function withCustomCategory(settings, custom2) {
 function withCategoryEnabled(settings, id, enabled) {
   return id === "large" ? { ...settings, hideLargeDiffs: enabled } : { ...settings, categories: { ...settings.categories, [id]: enabled } };
 }
-var CODING_AGENT_IDS, SUGGESTED_FIX_MODES, REPO_CONFIG_MODES, REVIEW_GROUPINGS, COMPACT_TIMELINE_MODES, DIGEST_VIEWS, DEFAULT_SETTINGS, SETTINGS_STORAGE_KEY, CATEGORY_ORDER;
+var CODING_AGENT_IDS, SUGGESTED_FIX_MODES, REPO_CONFIG_MODES, REVIEW_GROUPINGS, CLOUDFLARE_PREVIEW_URLS, COMPACT_TIMELINE_MODES, DIGEST_VIEWS, DEFAULT_SETTINGS, SETTINGS_STORAGE_KEY, CATEGORY_ORDER;
 var init_settings = __esm({
   "../../packages/core/src/settings.ts"() {
     "use strict";
@@ -2813,6 +2871,7 @@ var init_settings = __esm({
     SUGGESTED_FIX_MODES = ["all", "bots", "ai", "off"];
     REPO_CONFIG_MODES = ["always", "ask", "never"];
     REVIEW_GROUPINGS = ["type", "batch"];
+    CLOUDFLARE_PREVIEW_URLS = ["commit", "branch"];
     COMPACT_TIMELINE_MODES = ["off", "compact", "minimal"];
     DIGEST_VIEWS = ["digest", "digest-timeline", "github"];
     DEFAULT_SETTINGS = {
@@ -2845,6 +2904,7 @@ var init_settings = __esm({
       digestViewChosenAt: "",
       consentDecidedAt: "",
       reviewGrouping: "type",
+      cloudflarePreviewUrl: "commit",
       collapseDescription: true,
       attachmentLightbox: true,
       relatedLinks: true,
@@ -2909,6 +2969,7 @@ function usageSettingsOf(settings) {
     choices: {
       compactTimeline: settings.compactTimeline,
       reviewGrouping: settings.reviewGrouping,
+      cloudflarePreviewUrl: settings.cloudflarePreviewUrl,
       repoConfigs: settings.repoConfigs,
       suggestedFixes: settings.suggestedFixes,
       codingAgent: settings.codingAgent,
@@ -3015,6 +3076,7 @@ var init_usage_settings = __esm({
     USAGE_CHOICES = {
       compactTimeline: COMPACT_TIMELINE_MODES,
       reviewGrouping: REVIEW_GROUPINGS,
+      cloudflarePreviewUrl: CLOUDFLARE_PREVIEW_URLS,
       repoConfigs: REPO_CONFIG_MODES,
       suggestedFixes: SUGGESTED_FIX_MODES,
       codingAgent: CODING_AGENT_IDS,
@@ -3483,6 +3545,9 @@ function collectSettingsIssues(value, path = "settings", catalog = BUNDLED_CATAL
   }
   if (value.reviewGrouping !== void 0 && !isReviewGrouping(value.reviewGrouping)) {
     issues.push({ path: `${path}.reviewGrouping`, message: `Expected one of ${list(REVIEW_GROUPINGS)}, got ${describeValue(value.reviewGrouping)}.` });
+  }
+  if (value.cloudflarePreviewUrl !== void 0 && !isCloudflarePreviewUrl(value.cloudflarePreviewUrl)) {
+    issues.push({ path: `${path}.cloudflarePreviewUrl`, message: `Expected one of ${list(CLOUDFLARE_PREVIEW_URLS)}, got ${describeValue(value.cloudflarePreviewUrl)}.` });
   }
   if (value.suggestedFixes !== void 0 && !isSuggestedFixMode(value.suggestedFixes)) {
     issues.push({ path: `${path}.suggestedFixes`, message: `Expected one of ${list(SUGGESTED_FIX_MODES)}, got ${describeValue(value.suggestedFixes)}.` });
@@ -11526,6 +11591,7 @@ var init_repo_config = __esm({
       "digestViewChosenAt",
       "consentDecidedAt",
       "reviewGrouping",
+      "cloudflarePreviewUrl",
       "collapseDescription",
       "aiBaseUrl",
       "aiModel",
@@ -12063,6 +12129,17 @@ var init_settings_schema = __esm({
             ]
           },
           {
+            kind: "choice",
+            key: "cloudflarePreviewUrl",
+            label: "Cloudflare previews open",
+            description: "A Cloudflare Pages comment gives two addresses. The Preview URL keeps the build of that commit. The Branch Preview URL moves to each new build, so one address serves the whole pull request.",
+            popup: false,
+            options: [
+              { value: "commit", label: "This commit", description: "The build of the commit the comment is about. Older previews show the pull request as it was." },
+              { value: "branch", label: "Branch", description: "The newest build of the branch. Sign-ins and allowlists keep working across pushes." }
+            ]
+          },
+          {
             kind: "toggle",
             key: "quickReview",
             label: "Submit review from any tab",
@@ -12353,12 +12430,14 @@ __export(src_exports, {
   CHANGE_KINDS_CATEGORY_IDS: () => CHANGE_KINDS_CATEGORY_IDS,
   CHANGE_KIND_IDS: () => CHANGE_KIND_IDS,
   CHIP_PLACEMENTS: () => CHIP_PLACEMENTS,
+  CLOUDFLARE_PREVIEW_URLS: () => CLOUDFLARE_PREVIEW_URLS,
   CODING_AGENT_IDS: () => CODING_AGENT_IDS,
   COMPACT_TIMELINE_MODES: () => COMPACT_TIMELINE_MODES,
   CORRUPTED_SETTINGS_COPY: () => CORRUPTED_SETTINGS_COPY,
   COUNT_PATTERN: () => COUNT_PATTERN,
   CUSTOM_GROUP_ID: () => CUSTOM_GROUP_ID,
   DEFAULT_SETTINGS: () => DEFAULT_SETTINGS,
+  DIFF_PARSE_VERSION: () => DIFF_PARSE_VERSION,
   DIGEST_VIEWS: () => DIGEST_VIEWS,
   EMPTY_REPO_CONFIG: () => EMPTY_REPO_CONFIG,
   EMPTY_TOTALS: () => EMPTY_TOTALS,
@@ -12462,6 +12541,7 @@ __export(src_exports, {
   isCategoryId: () => isCategoryId,
   isCategoryInPicker: () => isCategoryInPicker,
   isChangeKindId: () => isChangeKindId,
+  isCloudflarePreviewUrl: () => isCloudflarePreviewUrl,
   isCodingAgentId: () => isCodingAgentId,
   isCommentOnlyLine: () => isCommentOnlyLine,
   isCompactTimelineMode: () => isCompactTimelineMode,
@@ -32025,6 +32105,7 @@ var previewRecordSchema = external_exports.object({
   status: external_exports.enum(PREVIEW_STATUSES),
   url: external_exports.string().url().nullable(),
   inspectUrl: external_exports.string().url().nullable(),
+  branchUrl: external_exports.string().url().optional(),
   anchor: sourceAnchorSchema,
   updatedAt: isoDate.optional(),
   reason: external_exports.string().min(1).max(200).optional()
@@ -32108,7 +32189,8 @@ function metaFrom(value) {
     ...summarised,
     previews: value.previews.map((entry2) => {
       const record4 = { host: entry2.host, project: entry2.project, status: entry2.status, url: entry2.url, inspectUrl: entry2.inspectUrl, anchor: entry2.anchor };
-      const dated = entry2.updatedAt === void 0 ? record4 : { ...record4, updatedAt: entry2.updatedAt };
+      const branched = entry2.branchUrl === void 0 ? record4 : { ...record4, branchUrl: entry2.branchUrl };
+      const dated = entry2.updatedAt === void 0 ? branched : { ...branched, updatedAt: entry2.updatedAt };
       return entry2.reason === void 0 ? dated : { ...dated, reason: entry2.reason };
     })
   };
@@ -34487,14 +34569,16 @@ function parseNetlify(doc) {
 function parseCloudflare(doc) {
   const pages = /Deploying\s+(\S+)\s+with\s+.*Cloudflare Pages/i.exec(doc.text) ?? /Deploying\s+(\S+)\s+with/i.exec(doc.text);
   const previewUrl = (() => {
-    const after = /Preview URL:?\s*\n?\s*(https?:\/\/\S+)/i.exec(doc.text)?.[1];
+    const after = /(?<!Branch )Preview URL:?\s*\n?\s*(https?:\/\/\S+)/i.exec(doc.text)?.[1];
     return after ?? linkByHref(doc, /^https:\/\/[a-z0-9-]+\.[^.]+\.pages\.dev/i)?.href ?? null;
   })();
+  const branchUrl = withScheme(/Branch Preview URL:?\s*\n?\s*(https?:\/\/\S+)/i.exec(doc.text)?.[1] ?? null);
   const statusLine = lines(doc).find((line) => /^Status:?/i.test(line) || /Deploy(ment)? (successful|failed)|Building/i.test(line)) ?? "";
   const logs = linkWhere(doc, /view logs/i) ?? linkByHref(doc, /dash\.cloudflare\.com/i);
   const out = [];
   if (pages?.[1] !== void 0 || previewUrl !== null) {
-    out.push(preview("cloudflare", doc, pages?.[1] ?? "", statusLine === "" ? previewUrl === null ? "unknown" : "ready" : statusFromText(statusLine), previewUrl, logs?.href ?? null));
+    const found = preview("cloudflare", doc, pages?.[1] ?? "", statusLine === "" ? previewUrl === null ? "unknown" : "ready" : statusFromText(statusLine), previewUrl, logs?.href ?? null);
+    out.push(branchUrl === null || branchUrl === found.url ? found : { ...found, branchUrl });
   }
   if (out.length === 0) {
     for (const line of lines(doc)) {
