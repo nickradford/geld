@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { latestPreviews, parsePreviews, previewDocFromMarkdown, vercelHeader } from './previews';
+import { latestPreviews, parsePreviews, previewDocFromMarkdown, vercelHeader, withPreviewUrl } from './previews';
 
 function fixture(name: string): string {
   return readFileSync(new URL(`./__fixtures__/previews/${name}.md`, import.meta.url), 'utf8');
@@ -160,6 +160,27 @@ describe('latestPreviews', () => {
     const { latest, archived } = latestPreviews([...older, ...newer, ...other]);
     expect(latest.map((entry) => entry.anchor)).toEqual(['issuecomment-2', 'issuecomment-3']);
     expect(archived.map((entry) => entry.anchor)).toEqual(['issuecomment-1']);
+  });
+});
+
+describe('withPreviewUrl', () => {
+  const first = (name: string, author: string) => {
+    const [entry] = parse(name, author);
+    if (!entry) throw new Error(`no preview in ${name}`);
+    return entry;
+  };
+
+  it('opens the Branch Preview URL only for Cloudflare in branch mode', () => {
+    const pages = first('cloudflare', 'cloudflare-workers-and-pages[bot]');
+    const netlify = first('netlify', 'netlify[bot]');
+    expect(withPreviewUrl(pages, 'branch').url).toBe('https://security-phase1-critical-fix.alloflow-cdn.pages.dev');
+    expect(withPreviewUrl(pages, 'commit')).toBe(pages);
+    expect(withPreviewUrl(netlify, 'branch')).toBe(netlify);
+  });
+
+  it('keeps the commit URL when the comment gave no branch URL', () => {
+    const workers = first('cloudflare-workers', 'cloudflare-workers-and-pages[bot]');
+    expect(withPreviewUrl(workers, 'branch')).toBe(workers);
   });
 });
 

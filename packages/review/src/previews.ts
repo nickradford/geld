@@ -32,6 +32,7 @@
  * - Actions in general (surge-preview, MDN, Cloudflare docs): "Preview URL:" / "Preview" + a link.
  */
 
+import type { CloudflarePreviewUrl } from '@geld/core';
 import type { PreviewRecord, PreviewStatusRecord } from './model';
 
 export type PreviewStatus = PreviewStatusRecord;
@@ -440,6 +441,11 @@ export function parsePreviews(doc: PreviewDoc): readonly Preview[] {
 /** Identity of the deployed thing across comments: the same host's same project supersedes itself. */
 export function previewKey(entry: Preview): string {
   return `${entry.host}:${entry.project.toLowerCase()}`;
+}
+
+/** The preview opening Cloudflare's Branch Preview URL when the reader chose the branch and the comment gave one. */
+export function withPreviewUrl(entry: Preview, cloudflare: CloudflarePreviewUrl): Preview {
+  return cloudflare === 'branch' && entry.host === 'cloudflare' && entry.branchUrl !== undefined ? { ...entry, url: entry.branchUrl } : entry;
 }
 
 /**
