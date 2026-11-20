@@ -140,6 +140,8 @@ export interface GeldSettings {
    * holding what landed since the previous one).
    */
   readonly reviewGrouping: ReviewGrouping;
+  /** Which of a Cloudflare Pages comment's addresses a preview opens: the build of that `commit` (the default) or the `branch` alias Cloudflare moves to each new build. */
+  readonly cloudflarePreviewUrl: CloudflarePreviewUrl;
   /**
    * Shorten the PR description above the digest: fold each section under its
    * heading (innermost sections closed), and cut a long description with no
@@ -226,6 +228,13 @@ export function isReviewGrouping(value: unknown): value is ReviewGrouping {
   return typeof value === 'string' && REVIEW_GROUPINGS.some((mode) => mode === value);
 }
 
+export const CLOUDFLARE_PREVIEW_URLS = ['commit', 'branch'] as const;
+export type CloudflarePreviewUrl = (typeof CLOUDFLARE_PREVIEW_URLS)[number];
+
+export function isCloudflarePreviewUrl(value: unknown): value is CloudflarePreviewUrl {
+  return typeof value === 'string' && CLOUDFLARE_PREVIEW_URLS.some((mode) => mode === value);
+}
+
 export const COMPACT_TIMELINE_MODES = ['off', 'compact', 'minimal'] as const;
 export type CompactTimelineMode = (typeof COMPACT_TIMELINE_MODES)[number];
 
@@ -299,6 +308,7 @@ export const DEFAULT_SETTINGS: GeldSettings = {
   digestViewChosenAt: '',
   consentDecidedAt: '',
   reviewGrouping: 'type',
+  cloudflarePreviewUrl: 'commit',
   collapseDescription: true,
   attachmentLightbox: true,
   relatedLinks: true,
@@ -566,6 +576,7 @@ export function normalizeSettings(value: unknown): GeldSettings {
     digestViewChosenAt: typeof record.digestViewChosenAt === 'string' ? record.digestViewChosenAt : DEFAULT_SETTINGS.digestViewChosenAt,
     consentDecidedAt: typeof record.consentDecidedAt === 'string' ? record.consentDecidedAt : DEFAULT_SETTINGS.consentDecidedAt,
     reviewGrouping: isReviewGrouping(record.reviewGrouping) ? record.reviewGrouping : DEFAULT_SETTINGS.reviewGrouping,
+    cloudflarePreviewUrl: isCloudflarePreviewUrl(record.cloudflarePreviewUrl) ? record.cloudflarePreviewUrl : DEFAULT_SETTINGS.cloudflarePreviewUrl,
     collapseDescription: bool(record, 'collapseDescription', DEFAULT_SETTINGS.collapseDescription),
     attachmentLightbox: bool(record, 'attachmentLightbox', DEFAULT_SETTINGS.attachmentLightbox),
     relatedLinks: bool(record, 'relatedLinks', DEFAULT_SETTINGS.relatedLinks),

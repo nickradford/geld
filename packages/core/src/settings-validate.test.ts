@@ -181,6 +181,12 @@ describe('collectSettingsIssues', () => {
       { path: 'settings.compactTimeline', message: 'Expected one of "off", "compact", "minimal", got "loud".' },
     ]);
   });
+
+  it('rejects an unknown cloudflarePreviewUrl value', () => {
+    expect(collectSettingsIssues({ ...DEFAULT_SETTINGS, cloudflarePreviewUrl: 'latest' })).toEqual([
+      { path: 'settings.cloudflarePreviewUrl', message: 'Expected one of "commit", "branch", got "latest".' },
+    ]);
+  });
 });
 
 describe('describeValue', () => {
